@@ -13,7 +13,7 @@ if len(sys.argv) > 1:
 						"User-Agent": "Work with productStyle Python Script",
 						"From": CONTACT
 						}
-			apiUrl = apiUrl + "?appId=" + APP_ID	#Append appId parameter to API call
+			apiUrl = apiUrl + "?isEffectiveDateAware=false&appId=" + APP_ID	#Append appId and another parameter to API call
 
 		else:
 			print("Local config file not found - cannot proceed")
