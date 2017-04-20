@@ -1,15 +1,23 @@
-import requests, json, time, sys, csv
+import requests, json, sys, csv
 from config import *
 
-# Set variables for processing based on argument passed when script executed; exit if no or incorrect argument passed
+# Set API url variable for processing based on argument passed when script executed; exit if no or incorrect argument passed
 if len(sys.argv) > 1:
 	apiUrl = str(sys.argv[1])
 
 	if apiUrl.find("/resources/productStyle/v1/") > 0:
-		myHeader = {"appId": APP_ID,
-					"User-Agent": "Work with productStyle Python Script",
-					"From": CONTACT
-					}
+
+		if APP_ID:
+			myHeader = {"appId": APP_ID,
+						"User-Agent": "Work with productStyle Python Script",
+						"From": CONTACT
+						}
+			apiUrl = apiUrl + "?appId=" + APP_ID	#Append appId parameter to API call
+
+		else:
+			print("Local config file not found - cannot proceed")
+			sys.exit(2)
+
 	else:
 		print("Invalid argument -- submit a valid productStyle API URL to proceed")
 		sys.exit(2)
@@ -22,32 +30,87 @@ else:
 # Function that iterates through a productStyle API response and works with the data differently depending on the format of the JSON
 def processColors(productStyleVariantList, output):
 
-	# Figure out if the colors graph is in a list or a dictionary and work through the json response accordingly
+	# Figure out if the initial node of the product data graph is in a list or a dictionary and work through the json response accordingly
+	# If the initial node is a dictionary object type, there is only one variant present and does not need to be looped through
 	if type(productStyleVariantList) is dict:
 
-		for colors in productStyleVariantList['productStyleColors']:	# Iterate through each style color in the response
+		# Print variant info to console and log to .csv
+		print("Single variant: {0}".format(productStyleVariantList['variantName']))
+		output.writerow(["Only one variant in the response"])
+		output.writerow([productStyleVariantList['variantName']])
 
-			# Print color info to console
-			print(productStyleVariantList['variantName'])
-			print(colors['businessCatalogItemId'])
+		# Check if there is a list of colors or just a single color, represented in the response as the presence of a dictionary object
+		if type(productStyleVariantList['productStyleColors']) is list:
 
-			# Log color info to a .csv
-			output.writerow([productStyleVariantList['variantName']])
-			output.writerow([colors['businessCatalogItemId']])
+			print("Multiple colors within the lone variant")
+			output.writerow(["Multiple colors within the lone variant"])
 
+			# Iterate through each style color in the list
+			for colors in productStyleVariantList['productStyleColors']:
+
+				# Print color info to console and log to .csv
+				print(colors['businessCatalogItemId'])
+				output.writerow([colors['businessCatalogItemId']])
+
+				'''
+				Iterate through style color data elements and child SKUs in order to accomplish your task
+				'''
+
+		# If there is only a single color, do not loop but grab the data from the dictionary via keys
+		elif type(productStyleVariantList['productStyleColors']) is dict:
+
+			print("One color within the lone variant")
+			output.writerow(["One color within the lone variant"])
+
+			# Print color info to console and log to .csv
+			print(productStyleVariantList['productStyleColors']['businessCatalogItemId'])
+			output.writerow(productStyleVariantList['productStyleColors']['businessCatalogItemId'])
+
+			'''
+			Work with single style color's data elements and child SKUs in order to accomplish your task
+			'''
+
+	# If there are multiple variants in the response, iterate through each one and access the colors nested within
 	elif type(productStyleVariantList) is list:
 
-		for variant in productStyleVariantList:		# Iterate through each variant in the response
+		print("Multiple variants in the response")
+		output.writerow(["Multiple variants in the response"])
+
+		for variant in productStyleVariantList:		# Iterate through each variant
 
 			# Print variant info to console and log to .csv
 			print(variant['variantName'])
 			output.writerow([variant['variantName']])
 
-			for x in range(len(variant['productStyleColors'])):	# Iterate through each color in the variant
+			# Check if there is a list of colors or just a single color, represented in the response as the presence of a dictionary object
+			if type(variant['productStyleColors']) is list:
+
+				print("Multiple colors in the variant")
+				output.writerow(["Multiple colors in the variant"])
+
+				for x in range(len(variant['productStyleColors'])):	# Iterate through each color in the variant
+
+					# Print color info to console and log to .csv
+					print(variant['productStyleColors'][x]['businessCatalogItemId'])
+					output.writerow([variant['productStyleColors'][x]['businessCatalogItemId']])
+
+					'''
+					Iterate through style color data elements and child SKUs in order to accomplish your task
+					'''
+
+			# If there is only a single color, do not loop but grab the data from the dictionary via keys
+			elif type(variant['productStyleColors']) is dict:
+
+				print("One color in the variant")
+				output.writerow(["One color in the variant"])
 
 				# Print color info to console and log to .csv
-				print(variant['productStyleColors'][x]['businessCatalogItemId'])
-				output.writerow([variant['productStyleColors'][x]['businessCatalogItemId']])
+				print(variant['productStyleColors']['businessCatalogItemId'])
+				output.writerow([variant['productStyleColors']['businessCatalogItemId']])
+
+				'''
+				Work with single style color's data elements and child SKUs in order to accomplish your task
+				'''
 
 	return
 
@@ -55,16 +118,19 @@ def processColors(productStyleVariantList, output):
 def apiRequest(url):
 
 	try:
+
 		apiResponse = requests.get(url, headers=myHeader)
 		apiResponse.close()
 		apiStatusCode = apiResponse.status_code
 		x = 0
+
 	except requests.exceptions.ConnectionError as e:
+
 		apiResponse = ""
 		apiStatusCode = 0
 		x = 21
 
-	# Make sure initial request is successful; if not, re-request until successful response obtained
+	# Make sure initial request is successful; if not, re-request until successful response obtained with max of 20 attempts
 	while (apiStatusCode != 200 and apiStatusCode != 204 and x < 20):
 		print(url, " - ", apiStatusCode, ": ", apiResponse.elapsed)
 		apiResponse = requests.get(url, headers=myHeader)
@@ -79,7 +145,6 @@ def apiRequest(url):
 # Prepare output file, write header row
 csvfile = open ("color-info.csv", "w")
 reportwriter = csv.writer(csvfile)
-reportwriter.writerow(["variantNames-and-colorIds"])
 
 # Make productStyle API request, put response and status code into variables
 response = apiRequest(apiUrl)
@@ -90,6 +155,7 @@ statusCode = response[1]
 try:
 	productResponse = productResponse.json()
 	jsonObject = True
+
 except (ValueError, AttributeError) as e:
 	jsonObject = False
 
@@ -98,6 +164,7 @@ if statusCode == 200 and jsonObject:
 
 	resource = productResponse["resourceUrl"]	# Grab API request URL
 	print("API call is: {0}".format(resource))	# Log request URL to the console
+	reportwriter.writerow([resource])			# Log request URL to the output file
 
 	# Process API response
 	processColors(productResponse["productStyleV1"]["productStyleVariantList"], reportwriter)
